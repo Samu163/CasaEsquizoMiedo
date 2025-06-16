@@ -12,7 +12,7 @@ public class CloudBehaviorTest : MonoBehaviour {
 
     void Start () {
         rotSpeed = Random.Range (rotSpeedMinMax.x, rotSpeedMinMax.y);
-        cloudCentres = FindObjectsOfType<CloudCoreTest> ();
+        cloudCentres = FindObjectsByType<CloudCoreTest>(FindObjectsSortMode.None);
         myTransform = transform;
     }
 
