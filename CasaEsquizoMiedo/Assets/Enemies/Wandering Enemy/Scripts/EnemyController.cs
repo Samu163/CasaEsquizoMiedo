@@ -94,7 +94,7 @@ public class EnemyController : MonoBehaviour
     
     private void Update()
     {
-        if (currentState == EnemyState.Stunned) return;
+        //if (currentState == EnemyState.Stunned) return;
         
         UpdateDetection();
         UpdateState();
