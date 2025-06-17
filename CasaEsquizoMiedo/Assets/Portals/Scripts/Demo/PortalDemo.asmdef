@@ -1,0 +1,16 @@
+{
+    "name": "PortalDemo",
+    "rootNamespace": "PortalDemo",
+    "references": [
+        "GUID:19cd8f369d23dfe42aba992438235893"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
