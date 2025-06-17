@@ -21,11 +21,18 @@ public class EnemyController : MonoBehaviour
     [SerializeField] private LayerMask obstacleMask = 1;
     [SerializeField] private LayerMask playerMask = 1;
     
+    [Header("Progressive Detection")]
+    [SerializeField] private float detectionThreshold = 100f;
+    [SerializeField] private float baseDetectionRate = 20f;
+    [SerializeField] private float detectionDecayRate = 15f;
+    [SerializeField] private float proximityRadius = 3f;
+    [SerializeField] private float frontDetectionMultiplier = 3f;
+    
     [Header("Movement Settings")]
     [SerializeField] private float patrolSpeed = 2f;
     [SerializeField] private float chaseSpeed = 5f;
-    [SerializeField] private float investigateSpeed = 3f; //sonidos normales
-    [SerializeField] private float urgentInvestigateSpeed = 4.5f; //sonidos fuertes
+    [SerializeField] private float investigateSpeed = 3f;
+    [SerializeField] private float urgentInvestigateSpeed = 4.5f;
     
     [Header("Behavior Settings")]
     [SerializeField] private float waitTimeAtWaypoint = 3f;
@@ -42,29 +49,27 @@ public class EnemyController : MonoBehaviour
     [SerializeField] private AudioClip[] chaseSounds;
     [SerializeField] private AudioClip stunSound;
     
-    //components
     private NavMeshAgent agent;
     private AudioSource audioSource;
     
-    //states
     public EnemyState currentState { get; private set; }
     
-    //detection
     private Transform player;
     private Vector3 lastKnownPlayerPosition;
     private Vector3 investigatePosition;
     private float lastPlayerSightTime;
-    private bool isUrgentInvestigation = false; //sonidos fuertes
+    private bool isUrgentInvestigation = false;
     
-    //patrol
+    private float detectionMeter = 0f;
+    private bool isDetectingPlayer = false;
+    
     private int currentWaypointIndex = 0;
     private bool waitingAtWaypoint = false;
     
-    //timer
     private float stateTimer = 0f;
     
-    //events para debug
     public System.Action<EnemyState> OnStateChanged;
+    public System.Action<float> OnDetectionChanged;
     
     private void Start()
     {
@@ -94,9 +99,8 @@ public class EnemyController : MonoBehaviour
     
     private void Update()
     {
-        //if (currentState == EnemyState.Stunned) return;
-        
         UpdateDetection();
+        UpdateDetectionMeter();
         UpdateState();
         
         stateTimer += Time.deltaTime;
@@ -187,7 +191,7 @@ public class EnemyController : MonoBehaviour
     
     private void UpdateChaseState()
     {
-        if (player != null && CanSeePlayer())
+        if (player != null && (CanSeePlayer() || CanDetectPlayerInProximity()))
         {
             lastKnownPlayerPosition = player.position;
             lastPlayerSightTime = Time.time;
@@ -222,11 +226,63 @@ public class EnemyController : MonoBehaviour
         if (player == null || currentState == EnemyState.Stunned) return;
         
         bool canSeePlayer = CanSeePlayer();
+        bool canDetectInProximity = CanDetectPlayerInProximity();
         
-        if (canSeePlayer && currentState != EnemyState.Chase)
+        isDetectingPlayer = canSeePlayer || canDetectInProximity;
+        
+        if (detectionMeter >= detectionThreshold && currentState != EnemyState.Chase)
         {
             SetState(EnemyState.Chase);
         }
+    }
+    
+    private void UpdateDetectionMeter()
+    {
+        if (currentState == EnemyState.Stunned) return;
+        
+        if (isDetectingPlayer)
+        {
+            float detectionRate = CalculateDetectionRate();
+            detectionMeter = Mathf.Min(detectionMeter + detectionRate * Time.deltaTime, detectionThreshold);
+        }
+        else
+        {
+            detectionMeter = Mathf.Max(detectionMeter - detectionDecayRate * Time.deltaTime, 0f);
+        }
+        
+        OnDetectionChanged?.Invoke(detectionMeter / detectionThreshold);
+    }
+    
+    private float CalculateDetectionRate()
+    {
+        if (player == null) return 0f;
+        
+        float distance = Vector3.Distance(transform.position, player.position);
+        float distanceMultiplier = Mathf.Lerp(3f, 1f, distance / visionRange);
+        
+        bool canSeePlayer = CanSeePlayer();
+        bool isInProximity = CanDetectPlayerInProximity();
+        
+        if (canSeePlayer)
+        {
+            return baseDetectionRate * distanceMultiplier;
+        }
+        else if (isInProximity)
+        {
+            Vector3 directionToPlayer = (player.position - transform.position).normalized;
+            float angleToPlayer = Vector3.Angle(transform.forward, directionToPlayer);
+            
+            if (angleToPlayer <= 90f)
+            {
+                return baseDetectionRate * frontDetectionMultiplier * distanceMultiplier;
+            }
+            else
+            {
+                return baseDetectionRate * 0.5f * distanceMultiplier;
+            }
+        }
+        
+        return 0f;
     }
     
     private bool CanSeePlayer()
@@ -247,6 +303,14 @@ public class EnemyController : MonoBehaviour
         }
         
         return true;
+    }
+    
+    private bool CanDetectPlayerInProximity()
+    {
+        if (player == null) return false;
+        
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+        return distanceToPlayer <= proximityRadius;
     }
     
     private void HandleSoundEmitted(Vector3 soundPosition, bool isLoudSound)
@@ -316,6 +380,7 @@ public class EnemyController : MonoBehaviour
     public void StunEnemy()
     {
         SetState(EnemyState.Stunned);
+        detectionMeter = 0f;
     }
     
     public void SetPatrolWaypoints(Transform[] waypoints)
@@ -329,13 +394,17 @@ public class EnemyController : MonoBehaviour
         }
     }
     
+    public float GetDetectionProgress()
+    {
+        return detectionMeter / detectionThreshold;
+    }
+    
     #endregion
     
     #region Debug Visualization
     
     private void OnDrawGizmosSelected()
     {
-        // Vision cone
         Gizmos.color = Color.yellow;
         Vector3 leftBoundary = Quaternion.Euler(0, -visionAngle / 2, 0) * transform.forward * visionRange;
         Vector3 rightBoundary = Quaternion.Euler(0, visionAngle / 2, 0) * transform.forward * visionRange;
@@ -343,11 +412,12 @@ public class EnemyController : MonoBehaviour
         Gizmos.DrawLine(transform.position, transform.position + leftBoundary);
         Gizmos.DrawLine(transform.position, transform.position + rightBoundary);
         
-        // Hearing range
         Gizmos.color = Color.blue;
         Gizmos.DrawWireSphere(transform.position, hearingRange);
         
-        // Waypoints
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, proximityRadius);
+        
         if (patrolWaypoints != null)
         {
             Gizmos.color = Color.green;
@@ -369,9 +439,22 @@ public class EnemyController : MonoBehaviour
             }
         }
         
-        // Current state indicator
         Gizmos.color = GetStateColor();
         Gizmos.DrawWireCube(transform.position + Vector3.up * 2.5f, Vector3.one * 0.5f);
+        
+        if (Application.isPlaying)
+        {
+            Gizmos.color = Color.white;
+            Vector3 barPosition = transform.position + Vector3.up * 3f;
+            float barWidth = 2f;
+            float barHeight = 0.2f;
+            float fillAmount = detectionMeter / detectionThreshold;
+            
+            Gizmos.DrawWireCube(barPosition, new Vector3(barWidth, barHeight, 0.1f));
+            Gizmos.color = Color.Lerp(Color.green, Color.red, fillAmount);
+            Gizmos.DrawCube(barPosition - Vector3.right * (barWidth * 0.5f * (1f - fillAmount)), 
+                           new Vector3(barWidth * fillAmount, barHeight, 0.1f));
+        }
     }
     
     private Color GetStateColor()

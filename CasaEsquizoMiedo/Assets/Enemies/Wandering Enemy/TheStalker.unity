@@ -1678,7 +1678,7 @@ Transform:
   m_GameObject: {fileID: 796944844}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -10, y: 1, z: -6.5}
+  m_LocalPosition: {x: -10.5, y: 1, z: -5.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3127,6 +3127,11 @@ MonoBehaviour:
   playerMask:
     serializedVersion: 2
     m_Bits: 256
+  detectionThreshold: 100
+  baseDetectionRate: 20
+  detectionDecayRate: 15
+  proximityRadius: 3
+  frontDetectionMultiplier: 3
   patrolSpeed: 1.5
   chaseSpeed: 4.5
   investigateSpeed: 3
