@@ -7,50 +7,100 @@ public enum EnemyState
     Patrol,
     Investigate,
     Chase,
-    Stunned
+    Stunned,
+    Search,
+    Alert,
+    Stalking,
+    PostStunRetreat
 }
 
 [RequireComponent(typeof(NavMeshAgent))]
-[RequireComponent(typeof(AudioSource))]
 public class EnemyController : MonoBehaviour
 {
+    [Header("DRAW GIZMOS")]
+    [SerializeField] private bool drawGizmos = true;
+
     [Header("Detection Settings")]
+    [Tooltip("Maximum distance the enemy can see the player")]
     [SerializeField] private float visionRange = 15f;
+    [Tooltip("Field of view angle in degrees")]
     [SerializeField] private float visionAngle = 60f;
+    [Tooltip("Distance at which the enemy can hear sounds")]
     [SerializeField] private float hearingRange = 10f;
+    [Tooltip("Layer mask for obstacles that block vision")]
     [SerializeField] private LayerMask obstacleMask = 1;
+    [Tooltip("Layer mask for the player")]
     [SerializeField] private LayerMask playerMask = 1;
     
     [Header("Progressive Detection")]
+    [Tooltip("Detection meter value needed to start chasing")]
     [SerializeField] private float detectionThreshold = 100f;
+    [Tooltip("Base rate at which detection increases per second")]
     [SerializeField] private float baseDetectionRate = 20f;
+    [Tooltip("Rate at which detection decreases per second when not detecting")]
     [SerializeField] private float detectionDecayRate = 15f;
+    [Tooltip("Distance at which player is detected regardless of vision")]
     [SerializeField] private float proximityRadius = 3f;
+    [Tooltip("Detection multiplier when player is in front of enemy")]
     [SerializeField] private float frontDetectionMultiplier = 3f;
     
     [Header("Movement Settings")]
+    [Tooltip("Speed during normal patrol")]
     [SerializeField] private float patrolSpeed = 2f;
+    [Tooltip("Speed when chasing the player")]
     [SerializeField] private float chaseSpeed = 5f;
+    [Tooltip("Speed when investigating a point of interest")]
     [SerializeField] private float investigateSpeed = 3f;
+    [Tooltip("Speed when urgently investigating (loud sounds)")]
     [SerializeField] private float urgentInvestigateSpeed = 4.5f;
+    [Tooltip("Speed when actively searching for the player")]
+    [SerializeField] private float searchSpeed = 3.5f;
+    [Tooltip("Speed when in alert mode")]
+    [SerializeField] private float alertSpeed = 2.5f;
+    [Tooltip("Speed when stalking the player")]
+    [SerializeField] private float stalkingSpeed = 1.5f;
+    [Tooltip("Speed when retreating after being stunned")]
+    [SerializeField] private float retreatSpeed = 6f;
     
-    [Header("Behavior Settings")]
-    [SerializeField] private float waitTimeAtWaypoint = 3f;
+    [Header("Behavior Timings")]
+    [Tooltip("Minimum time to wait at each waypoint")]
+    [SerializeField] private float minWaitTimeAtWaypoint = 2f;
+    [Tooltip("Maximum time to wait at each waypoint")]
+    [SerializeField] private float maxWaitTimeAtWaypoint = 5f;
+    [Tooltip("Time spent investigating a position")]
     [SerializeField] private float investigateTime = 8f;
+    [Tooltip("Duration of stun effect")]
     [SerializeField] private float stunDuration = 3f;
+    [Tooltip("Time before giving up chase and starting search")]
     [SerializeField] private float losePlayerTime = 5f;
+    [Tooltip("Duration of active search mode")]
+    [SerializeField] private float searchDuration = 15f;
+    [Tooltip("Duration of alert mode")]
+    [SerializeField] private float alertDuration = 10f;
+    [Tooltip("Duration of stalking mode")]
+    [SerializeField] private float stalkingDuration = 8f;
+    [Tooltip("Time to wait at waypoint after retreating from stun")]
+    [SerializeField] private float postStunWaitTime = 4f;
+    
+    [Header("Search Behavior")]
+    [Tooltip("Radius around investigation point to search")]
+    [SerializeField] private float searchRadius = 8f;
+    [Tooltip("Number of search points to investigate")]
+    [SerializeField] private int numberOfSearchPoints = 4;
+    [Tooltip("Time to spend at each search point")]
+    [SerializeField] private float timePerSearchPoint = 3f;
+    
+    [Header("Stalking Behavior")]
+    [Tooltip("Distance to maintain when stalking player")]
+    [SerializeField] private float stalkingDistance = 7f;
+    [Tooltip("How often to update stalking position (seconds)")]
+    [SerializeField] private float stalkingUpdateInterval = 2f;
     
     [Header("Waypoints")]
+    [Tooltip("Array of patrol waypoints")]
     [SerializeField] private Transform[] patrolWaypoints;
     
-    [Header("Audio")]
-    [SerializeField] private AudioClip[] patrolSounds;
-    [SerializeField] private AudioClip[] investigateSounds;
-    [SerializeField] private AudioClip[] chaseSounds;
-    [SerializeField] private AudioClip stunSound;
-    
     private NavMeshAgent agent;
-    private AudioSource audioSource;
     
     public EnemyState currentState { get; private set; }
     
@@ -65,6 +115,15 @@ public class EnemyController : MonoBehaviour
     
     private int currentWaypointIndex = 0;
     private bool waitingAtWaypoint = false;
+    private float currentWaitTime = 0f;
+    private bool isPatrollingForward = true;
+    
+    private Vector3[] searchPoints;
+    private int currentSearchPointIndex = 0;
+    private bool searchingAroundPoint = false;
+    
+    private float lastStalkingUpdate = 0f;
+    private Vector3 stalkingPosition;
     
     private float stateTimer = 0f;
     
@@ -91,7 +150,6 @@ public class EnemyController : MonoBehaviour
     private void InitializeComponents()
     {
         agent = GetComponent<NavMeshAgent>();
-        audioSource = GetComponent<AudioSource>();
         
         agent.speed = patrolSpeed;
         agent.stoppingDistance = 0.5f;
@@ -121,23 +179,41 @@ public class EnemyController : MonoBehaviour
         {
             case EnemyState.Patrol:
                 agent.speed = patrolSpeed;
-                PlayRandomSound(patrolSounds);
+                agent.isStopped = false;
                 break;
             case EnemyState.Investigate:
                 agent.speed = isUrgentInvestigation ? urgentInvestigateSpeed : investigateSpeed;
-                PlayRandomSound(investigateSounds);
+                agent.isStopped = false;
                 break;
             case EnemyState.Chase:
                 agent.speed = chaseSpeed;
-                PlayRandomSound(chaseSounds);
+                agent.isStopped = false;
                 break;
             case EnemyState.Stunned:
                 agent.isStopped = true;
-                PlaySound(stunSound);
+                break;
+            case EnemyState.Search:
+                agent.speed = searchSpeed;
+                agent.isStopped = false;
+                StartSearchBehavior();
+                break;
+            case EnemyState.Alert:
+                agent.speed = alertSpeed;
+                agent.isStopped = false;
+                StartAlertBehavior();
+                break;
+            case EnemyState.Stalking:
+                agent.speed = stalkingSpeed;
+                agent.isStopped = false;
+                break;
+            case EnemyState.PostStunRetreat:
+                agent.speed = retreatSpeed;
+                agent.isStopped = false;
+                RetreatToNearestWaypoint();
                 break;
         }
         
-        Debug.Log($"current state: {currentState}");
+        Debug.Log($"Enemy state changed to: {currentState}");
     }
     
     private void UpdateState()
@@ -156,6 +232,18 @@ public class EnemyController : MonoBehaviour
             case EnemyState.Stunned:
                 UpdateStunnedState();
                 break;
+            case EnemyState.Search:
+                UpdateSearchState();
+                break;
+            case EnemyState.Alert:
+                UpdateAlertState();
+                break;
+            case EnemyState.Stalking:
+                UpdateStalkingState();
+                break;
+            case EnemyState.PostStunRetreat:
+                UpdatePostStunRetreatState();
+                break;
         }
     }
     
@@ -171,7 +259,7 @@ public class EnemyController : MonoBehaviour
         {
             if (!agent.pathPending && agent.remainingDistance < 0.5f)
             {
-                StartCoroutine(WaitAtWaypoint());
+                StartCoroutine(WaitAtWaypointRandomly());
             }
         }
     }
@@ -180,11 +268,10 @@ public class EnemyController : MonoBehaviour
     {
         if (!agent.pathPending && agent.remainingDistance < 1f)
         {
-            if (stateTimer >= investigateTime)
+            if (!searchingAroundPoint)
             {
-                SetState(EnemyState.Patrol);
-                MoveToNextWaypoint();
-                isUrgentInvestigation = false;
+                searchingAroundPoint = true;
+                StartCoroutine(SearchAroundPoint(investigatePosition));
             }
         }
     }
@@ -201,8 +288,14 @@ public class EnemyController : MonoBehaviour
         {
             if (Time.time - lastPlayerSightTime > losePlayerTime)
             {
-                SetState(EnemyState.Patrol);
-                MoveToNextWaypoint();
+                if (Random.value < 0.6f)
+                {
+                    SetState(EnemyState.Stalking);
+                }
+                else
+                {
+                    SetState(EnemyState.Search);
+                }
             }
         }
     }
@@ -211,9 +304,72 @@ public class EnemyController : MonoBehaviour
     {
         if (stateTimer >= stunDuration)
         {
-            agent.isStopped = false;
+            SetState(EnemyState.PostStunRetreat);
+        }
+    }
+    
+    private void UpdateSearchState()
+    {
+        if (stateTimer >= searchDuration)
+        {
             SetState(EnemyState.Patrol);
-            MoveToNextWaypoint();
+            MoveToNearestWaypointInDirection();
+            return;
+        }
+        
+        if (searchPoints != null && currentSearchPointIndex < searchPoints.Length)
+        {
+            if (!agent.pathPending && agent.remainingDistance < 1f)
+            {
+                if (stateTimer - (currentSearchPointIndex * timePerSearchPoint) >= timePerSearchPoint)
+                {
+                    currentSearchPointIndex++;
+                    if (currentSearchPointIndex < searchPoints.Length)
+                    {
+                        agent.SetDestination(searchPoints[currentSearchPointIndex]);
+                    }
+                }
+            }
+        }
+    }
+    
+    private void UpdateAlertState()
+    {
+        if (stateTimer >= alertDuration)
+        {
+            SetState(EnemyState.Patrol);
+            MoveToNearestWaypointInDirection();
+        }
+    }
+    
+    private void UpdateStalkingState()
+    {
+        if (stateTimer >= stalkingDuration)
+        {
+            SetState(EnemyState.Search);
+            return;
+        }
+        
+        if (player != null)
+        {
+            if (Time.time - lastStalkingUpdate >= stalkingUpdateInterval)
+            {
+                UpdateStalkingPosition();
+                lastStalkingUpdate = Time.time;
+            }
+            
+            if (CanSeePlayer())
+            {
+                SetState(EnemyState.Chase);
+            }
+        }
+    }
+    
+    private void UpdatePostStunRetreatState()
+    {
+        if (!agent.pathPending && agent.remainingDistance < 1f)
+        {
+            StartCoroutine(WaitAfterRetreat());
         }
     }
     
@@ -223,7 +379,7 @@ public class EnemyController : MonoBehaviour
     
     private void UpdateDetection()
     {
-        if (player == null || currentState == EnemyState.Stunned) return;
+        if (player == null || currentState == EnemyState.Stunned || currentState == EnemyState.PostStunRetreat) return;
         
         bool canSeePlayer = CanSeePlayer();
         bool canDetectInProximity = CanDetectPlayerInProximity();
@@ -238,7 +394,7 @@ public class EnemyController : MonoBehaviour
     
     private void UpdateDetectionMeter()
     {
-        if (currentState == EnemyState.Stunned) return;
+        if (currentState == EnemyState.Stunned || currentState == EnemyState.PostStunRetreat) return;
         
         if (isDetectingPlayer)
         {
@@ -315,7 +471,7 @@ public class EnemyController : MonoBehaviour
     
     private void HandleSoundEmitted(Vector3 soundPosition, bool isLoudSound)
     {
-        if (currentState == EnemyState.Stunned) return;
+        if (currentState == EnemyState.Stunned || currentState == EnemyState.PostStunRetreat) return;
         
         float distanceToSound = Vector3.Distance(transform.position, soundPosition);
         
@@ -326,10 +482,119 @@ public class EnemyController : MonoBehaviour
             
             if (currentState != EnemyState.Chase)
             {
-                SetState(EnemyState.Investigate);
+                SetState(EnemyState.Alert);
                 agent.SetDestination(investigatePosition);
             }
         }
+    }
+    
+    #endregion
+    
+    #region Advanced Behaviors
+    
+    private void StartSearchBehavior()
+    {
+        searchPoints = GenerateSearchPoints(lastKnownPlayerPosition);
+        currentSearchPointIndex = 0;
+        if (searchPoints.Length > 0)
+        {
+            agent.SetDestination(searchPoints[0]);
+        }
+    }
+    
+    private Vector3[] GenerateSearchPoints(Vector3 centerPoint)
+    {
+        Vector3[] points = new Vector3[numberOfSearchPoints];
+        
+        for (int i = 0; i < numberOfSearchPoints; i++)
+        {
+            float angle = (360f / numberOfSearchPoints) * i;
+            Vector3 direction = new Vector3(Mathf.Cos(angle * Mathf.Deg2Rad), 0, Mathf.Sin(angle * Mathf.Deg2Rad));
+            Vector3 searchPoint = centerPoint + direction * searchRadius;
+            
+            NavMeshHit hit;
+            if (NavMesh.SamplePosition(searchPoint, out hit, searchRadius, NavMesh.AllAreas))
+            {
+                points[i] = hit.position;
+            }
+            else
+            {
+                points[i] = centerPoint;
+            }
+        }
+        
+        return points;
+    }
+    
+    private void StartAlertBehavior()
+    {
+        searchPoints = GenerateSearchPoints(investigatePosition);
+        currentSearchPointIndex = 0;
+        if (searchPoints.Length > 0)
+        {
+            agent.SetDestination(searchPoints[0]);
+        }
+    }
+    
+    private void UpdateStalkingPosition()
+    {
+        if (player == null) return;
+        
+        Vector3 directionFromPlayer = (transform.position - player.position).normalized;
+        Vector3 targetPosition = player.position + directionFromPlayer * stalkingDistance;
+        
+        Vector3 randomOffset = new Vector3(
+            Random.Range(-2f, 2f),
+            0,
+            Random.Range(-2f, 2f)
+        );
+        targetPosition += randomOffset;
+        
+        NavMeshHit hit;
+        if (NavMesh.SamplePosition(targetPosition, out hit, 5f, NavMesh.AllAreas))
+        {
+            stalkingPosition = hit.position;
+            agent.SetDestination(stalkingPosition);
+        }
+    }
+    
+    private IEnumerator SearchAroundPoint(Vector3 centerPoint)
+    {
+        Vector3[] localSearchPoints = GenerateSearchPoints(centerPoint);
+        
+        for (int i = 0; i < localSearchPoints.Length; i++)
+        {
+            agent.SetDestination(localSearchPoints[i]);
+            
+            while (agent.pathPending || agent.remainingDistance > 1f)
+            {
+                yield return null;
+            }
+            
+            yield return new WaitForSeconds(timePerSearchPoint * 0.5f);
+        }
+        
+        searchingAroundPoint = false;
+        isUrgentInvestigation = false;
+        SetState(EnemyState.Patrol);
+        MoveToNearestWaypointInDirection();
+    }
+    
+    private void RetreatToNearestWaypoint()
+    {
+        if (patrolWaypoints.Length == 0) return;
+        
+        int nearestWaypointIndex = GetNearestWaypointInDirection();
+        currentWaypointIndex = nearestWaypointIndex;
+        agent.SetDestination(patrolWaypoints[nearestWaypointIndex].position);
+    }
+    
+    private IEnumerator WaitAfterRetreat()
+    {
+        agent.isStopped = true;
+        yield return new WaitForSeconds(postStunWaitTime);
+        agent.isStopped = false;
+        SetState(EnemyState.Patrol);
     }
     
     #endregion
@@ -340,37 +605,100 @@ public class EnemyController : MonoBehaviour
     {
         if (patrolWaypoints.Length == 0) return;
         
-        currentWaypointIndex = (currentWaypointIndex + 1) % patrolWaypoints.Length;
+        if (isPatrollingForward)
+        {
+            currentWaypointIndex++;
+            if (currentWaypointIndex >= patrolWaypoints.Length)
+            {
+                currentWaypointIndex = patrolWaypoints.Length - 1;
+                isPatrollingForward = false;
+            }
+        }
+        else
+        {
+            currentWaypointIndex--;
+            if (currentWaypointIndex < 0)
+            {
+                currentWaypointIndex = 0;
+                isPatrollingForward = true;
+            }
+        }
+        
         agent.SetDestination(patrolWaypoints[currentWaypointIndex].position);
     }
     
-    private IEnumerator WaitAtWaypoint()
+    private void MoveToNearestWaypointInDirection()
+    {
+        if (patrolWaypoints.Length == 0) return;
+        
+        currentWaypointIndex = GetNearestWaypointInDirection();
+        agent.SetDestination(patrolWaypoints[currentWaypointIndex].position);
+    }
+    
+    private int GetNearestWaypointInDirection()
+    {
+        if (patrolWaypoints.Length == 0) return 0;
+        if (patrolWaypoints.Length == 1) return 0;
+        
+        Vector3 forward = transform.forward;
+        int bestWaypoint = 0;
+        float bestScore = float.MinValue;
+        
+        for (int i = 0; i < patrolWaypoints.Length; i++)
+        {
+            if (patrolWaypoints[i] == null) continue;
+            
+            Vector3 directionToWaypoint = (patrolWaypoints[i].position - transform.position).normalized;
+            float dotProduct = Vector3.Dot(forward, directionToWaypoint);
+            float distance = Vector3.Distance(transform.position, patrolWaypoints[i].position);
+            
+            float score = dotProduct - (distance * 0.1f);
+            
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestWaypoint = i;
+            }
+        }
+        
+        DeterminePatrolDirection(bestWaypoint);
+        return bestWaypoint;
+    }
+    
+    private void DeterminePatrolDirection(int targetWaypointIndex)
+    {
+        if (patrolWaypoints.Length <= 2)
+        {
+            isPatrollingForward = true;
+            return;
+        }
+        
+        int nextForwardIndex = (targetWaypointIndex + 1) % patrolWaypoints.Length;
+        int nextBackwardIndex = (targetWaypointIndex - 1 + patrolWaypoints.Length) % patrolWaypoints.Length;
+        
+        if (patrolWaypoints[nextForwardIndex] == null || patrolWaypoints[nextBackwardIndex] == null)
+        {
+            isPatrollingForward = true;
+            return;
+        }
+        
+        Vector3 forward = transform.forward;
+        Vector3 directionToForward = (patrolWaypoints[nextForwardIndex].position - patrolWaypoints[targetWaypointIndex].position).normalized;
+        Vector3 directionToBackward = (patrolWaypoints[nextBackwardIndex].position - patrolWaypoints[targetWaypointIndex].position).normalized;
+        
+        float forwardDot = Vector3.Dot(forward, directionToForward);
+        float backwardDot = Vector3.Dot(forward, directionToBackward);
+        
+        isPatrollingForward = forwardDot >= backwardDot;
+    }
+    
+    private IEnumerator WaitAtWaypointRandomly()
     {
         waitingAtWaypoint = true;
-        yield return new WaitForSeconds(waitTimeAtWaypoint);
+        currentWaitTime = Random.Range(minWaitTimeAtWaypoint, maxWaitTimeAtWaypoint);
+        yield return new WaitForSeconds(currentWaitTime);
         waitingAtWaypoint = false;
         MoveToNextWaypoint();
-    }
-    
-    #endregion
-    
-    #region Audio System
-    
-    private void PlaySound(AudioClip clip)
-    {
-        if (clip != null && audioSource != null)
-        {
-            audioSource.PlayOneShot(clip);
-        }
-    }
-    
-    private void PlayRandomSound(AudioClip[] clips)
-    {
-        if (clips.Length > 0)
-        {
-            AudioClip randomClip = clips[Random.Range(0, clips.Length)];
-            PlaySound(randomClip);
-        }
     }
     
     #endregion
@@ -387,6 +715,7 @@ public class EnemyController : MonoBehaviour
     {
         patrolWaypoints = waypoints;
         currentWaypointIndex = 0;
+        isPatrollingForward = true;
         
         if (waypoints.Length > 0)
         {
@@ -399,12 +728,31 @@ public class EnemyController : MonoBehaviour
         return detectionMeter / detectionThreshold;
     }
     
+    public void InvestigatePosition(Vector3 position, bool isUrgent = false)
+    {
+        if (currentState == EnemyState.Stunned || currentState == EnemyState.PostStunRetreat) return;
+        
+        investigatePosition = position;
+        isUrgentInvestigation = isUrgent;
+        searchingAroundPoint = false;
+        
+        if (currentState != EnemyState.Chase)
+        {
+            SetState(EnemyState.Alert);
+        }
+    }
+    
     #endregion
     
     #region Debug Visualization
     
-    private void OnDrawGizmosSelected()
+    private void OnDrawGizmos()
     {
+        if (!drawGizmos)
+        {
+            return;
+        }
+
         Gizmos.color = Color.yellow;
         Vector3 leftBoundary = Quaternion.Euler(0, -visionAngle / 2, 0) * transform.forward * visionRange;
         Vector3 rightBoundary = Quaternion.Euler(0, visionAngle / 2, 0) * transform.forward * visionRange;
@@ -417,6 +765,12 @@ public class EnemyController : MonoBehaviour
         
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, proximityRadius);
+        
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(transform.position, searchRadius);
+        
+        Gizmos.color = Color.magenta;
+        Gizmos.DrawWireSphere(transform.position, stalkingDistance);
         
         if (patrolWaypoints != null)
         {
@@ -455,6 +809,15 @@ public class EnemyController : MonoBehaviour
             Gizmos.DrawCube(barPosition - Vector3.right * (barWidth * 0.5f * (1f - fillAmount)), 
                            new Vector3(barWidth * fillAmount, barHeight, 0.1f));
         }
+        
+        if (Application.isPlaying && searchPoints != null)
+        {
+            Gizmos.color = Color.orange;
+            foreach (Vector3 point in searchPoints)
+            {
+                Gizmos.DrawWireSphere(point, 0.3f);
+            }
+        }
     }
     
     private Color GetStateColor()
@@ -465,6 +828,10 @@ public class EnemyController : MonoBehaviour
             case EnemyState.Investigate: return isUrgentInvestigation ? Color.red : Color.yellow;
             case EnemyState.Chase: return Color.red;
             case EnemyState.Stunned: return Color.gray;
+            case EnemyState.Search: return Color.orange;
+            case EnemyState.Alert: return Color.cyan;
+            case EnemyState.Stalking: return Color.magenta;
+            case EnemyState.PostStunRetreat: return Color.black;
             default: return Color.white;
         }
     }
