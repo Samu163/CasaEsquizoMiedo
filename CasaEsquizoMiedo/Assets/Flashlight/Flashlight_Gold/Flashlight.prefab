@@ -128,6 +128,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   flashlight: {fileID: 108038271100546340}
   toggleKey: 101
+  fixKey: 101
   onDuration: 10
   blinkDuration: 2
   cameraTransform: {fileID: 0}
