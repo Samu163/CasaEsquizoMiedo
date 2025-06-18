@@ -364,6 +364,26 @@ public class FirstPersonController : MonoBehaviour
         }
     }
 
+    public void Teleport(Transform fromPortal, Transform toPortal, Vector3 pos, Quaternion rot)
+    {
+        // Mueve al jugador a la nueva posición
+        transform.position = pos;
+
+        // Ajusta la rotación del jugador
+        Vector3 eulerRot = rot.eulerAngles;
+        float delta = Mathf.DeltaAngle(yaw, eulerRot.y);
+        yaw += delta;
+        transform.eulerAngles = Vector3.up * yaw;
+
+        // Ajusta la velocidad del Rigidbody para mantener la dirección relativa
+        if (rb != null)
+        {
+            rb.linearVelocity = toPortal.TransformVector(fromPortal.InverseTransformVector(rb.linearVelocity));
+        }
+
+        // Sincroniza los transforms de física
+        Physics.SyncTransforms();
+    }
     void FixedUpdate()
     {
         #region Movement
