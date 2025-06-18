@@ -3,13 +3,14 @@
 public class FlashlightController : MonoBehaviour
 {
     public Light flashlight;
-    public KeyCode toggleKey = KeyCode.E;
+    public KeyCode toggleKey = KeyCode.Mouse0;
+    public KeyCode fixKey = KeyCode.E;
 
     public float onDuration = 10f;
     public float blinkDuration = 2f;
 
     public Transform cameraTransform;
-    public Transform flashlightLightObject; // ← nuevo
+    public Transform flashlightLightObject;
     public Vector3 positionOffset = new Vector3(0f, -0.2f, 0.5f);
     public Vector3 initialRotationOffset = new Vector3(0f, -0.2f, 0.5f);
     public Vector3 flashRotationOffset = new Vector3(0f, -0.2f, 0.5f);
