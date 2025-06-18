@@ -8,7 +8,7 @@ public class AnomaliesManager : MonoBehaviour
 
     public List<Anomaly> allAnomalies = new();
 
-    private List<Anomaly> activeAnomalies = new();
+    [SerializeField] private List<Anomaly> activeAnomalies = new();
 
     public void SpawnAnomalies(int numAnomalies)
     {

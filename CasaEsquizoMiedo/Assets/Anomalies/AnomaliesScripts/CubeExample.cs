@@ -22,6 +22,7 @@ public class CubeExample : Anomaly
 
     public override void InitAnomaly()
     {
+        Destroy(LevelManager.instance.AnomaliesAndModel[modelIdentifier]);
         Debug.Log("CubeExample anomaly initialized.");
     }
 

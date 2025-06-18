@@ -22,6 +22,7 @@ public class CylinderExample : Anomaly
 
     public override void InitAnomaly()
     {
+        Destroy(LevelManager.instance.AnomaliesAndModel[modelIdentifier]);
         Debug.Log("CylinderExample anomaly initialized.");
     }
 

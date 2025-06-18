@@ -22,6 +22,7 @@ public class SphereExample : Anomaly
 
     public override void InitAnomaly()
     {
+        Destroy(LevelManager.instance.AnomaliesAndModel[modelIdentifier]);
         Debug.Log("SphereExample anomaly initialized.");
     }
 
