@@ -11,6 +11,8 @@ public abstract class FollowCamera : MonoBehaviour
     [SerializeField] private float rotationSmoothSpeed = 10f;
 
     protected Vector3 positionVelocity;
+    private Vector3 lastParentScale = Vector3.one;
+    private Vector3 lastAppliedScale = Vector3.one;
 
     protected virtual void LateFollowUpdate()
     {
@@ -21,5 +23,22 @@ public abstract class FollowCamera : MonoBehaviour
 
         Quaternion targetRot = cameraTransform.rotation * Quaternion.Euler(rotationOffset);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSmoothSpeed * Time.deltaTime);
+
+        Vector3 parentScale = transform.parent ? transform.parent.localScale : Vector3.one;
+        if (parentScale != lastParentScale)
+        {
+            lastParentScale = parentScale;
+
+            if (parentScale.y < 1f)
+            {
+                lastAppliedScale = new Vector3(1, 1 / parentScale.y, 1);
+            }
+            else
+            {
+                lastAppliedScale = Vector3.one;
+            }
+
+            transform.localScale = lastAppliedScale;
+        }
     }
 }

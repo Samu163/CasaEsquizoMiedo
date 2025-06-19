@@ -1,5 +1,4 @@
-﻿// File: FlashlightController.cs
-using UnityEngine;
+﻿using UnityEngine;
 
 public class FlashlightController : FollowCamera
 {
@@ -12,18 +11,19 @@ public class FlashlightController : FollowCamera
     public float rechargeHoldTime = 3f;
 
     public Transform flashlightLightObject;
+    public GameObject flashlightLightPlacementReference;
     public Vector3 flashRotationOffset = new Vector3(0f, -0.2f, 0.5f);
     public Animator flashlightAnimator;
 
-    private bool isOn = false;
-    private float onTimer = 0f;
-    private bool isBlinking = false;
-    private bool needsRecharge = false;
-    private bool wasOnBeforeDisable = false;
+    private bool isOn;
+    private float onTimer;
+    private bool isBlinking;
+    private bool needsRecharge;
+    private bool wasOnBeforeDisable;
 
-    private float rechargeTimer = 0f;
-    private bool isRecharging = false;
-    private bool shouldLowerAfterRecharge = false;
+    private float rechargeTimer;
+    private bool isRecharging;
+    private bool shouldLowerAfterRecharge;
 
     public bool IsBlinking => isBlinking;
 
@@ -65,23 +65,19 @@ public class FlashlightController : FollowCamera
             ToggleFlashlight(!isOn);
         }
 
-        if (needsRecharge)
-        {
-            if (Input.GetKeyDown(rechargeKey)) BeginRecharge();
+        if (!needsRecharge) return;
 
-            if (Input.GetKey(rechargeKey))
-            {
-                rechargeTimer += Time.deltaTime;
-                if (rechargeTimer >= rechargeHoldTime)
-                {
-                    RechargeFlashlight();
-                }
-            }
-            else if (Input.GetKeyUp(rechargeKey))
-            {
-                shouldLowerAfterRecharge = true;
-                StopRecharge();
-            }
+        if (Input.GetKeyDown(rechargeKey)) BeginRecharge();
+
+        if (Input.GetKey(rechargeKey))
+        {
+            rechargeTimer += Time.deltaTime;
+            if (rechargeTimer >= rechargeHoldTime) RechargeFlashlight();
+        }
+        else if (Input.GetKeyUp(rechargeKey))
+        {
+            shouldLowerAfterRecharge = true;
+            StopRecharge();
         }
     }
 
@@ -162,6 +158,8 @@ public class FlashlightController : FollowCamera
         if (!flashlightLightObject || !cameraTransform) return;
 
         Quaternion targetRotation = cameraTransform.rotation * Quaternion.Euler(flashRotationOffset);
+        flashlightLightObject.position = flashlightLightPlacementReference.transform.position;
         flashlightLightObject.rotation = Quaternion.Slerp(flashlightLightObject.rotation, targetRotation, Time.deltaTime * 10f);
+
     }
 }
