@@ -1,52 +1,43 @@
-﻿using DG.Tweening;
-using UnityEditor.Rendering.LookDev;
+﻿// File: CameraController.cs
+using DG.Tweening;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class CameraController : MonoBehaviour
+public class CameraController : FollowCamera
 {
-    public Transform cameraTransform;
     public Transform zoomTarget;
     public Image fadePanel;
     public GameObject cameraModel;
     public GameObject volume;
     public float fadeDuration = 0.2f;
 
-    public Vector3 positionOffset = new(0f, -0.2f, 0.5f);
-    public Vector3 rotationOffset = Vector3.zero;
+    [SerializeField] private float zoomSmoothTime = 0.15f;
 
-    [Header("Smooth Settings")]
-    [SerializeField] private float followSmoothTime = 0.05f;
-    [SerializeField] private float zoomSmoothTime = 0.15f;        
-    [SerializeField] private float rotationSmoothSpeed = 10f;
-
-    private Vector3 followVelocity = Vector3.zero;
     private Vector3 zoomVelocity = Vector3.zero;
     private bool isZoomed = false;
-    private bool isFading;
+    private bool isFading = false;
+
+    public bool IsZoomed => isZoomed;
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.E))
+        if (Input.GetKeyDown(KeyCode.Mouse1))
         {
-            StartCoroutine(FadeZoomTransition());
+            StartCoroutine(FadeZoomTransition(Color.black));
+            isZoomed = !isZoomed;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Mouse0) && isZoomed)
+        {
+            TakeShot();
+            StartCoroutine(FadeZoomTransition(Color.white));
             isZoomed = !isZoomed;
         }
     }
 
     void LateUpdate()
     {
-        if (!cameraTransform) return;
-
-        if (!isZoomed)
-        {
-            Vector3 targetPos = cameraTransform.position + cameraTransform.TransformDirection(positionOffset);
-            transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref followVelocity, followSmoothTime);
-
-            Quaternion targetRot = cameraTransform.rotation * Quaternion.Euler(rotationOffset);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSmoothSpeed * Time.deltaTime);
-        }
-        else
+        if (isZoomed)
         {
             if (!zoomTarget) return;
 
@@ -54,16 +45,22 @@ public class CameraController : MonoBehaviour
             Quaternion targetRot = zoomTarget.rotation;
 
             transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref zoomVelocity, zoomSmoothTime);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSmoothSpeed * Time.deltaTime);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, Time.deltaTime * 10f);
+        }
+        else
+        {
+            LateFollowUpdate();
         }
     }
 
-    System.Collections.IEnumerator FadeZoomTransition()
+    System.Collections.IEnumerator FadeZoomTransition(Color fadeColor)
     {
         isFading = true;
-
+        fadeColor.a = 0f;
+        fadePanel.color = fadeColor;
         fadePanel.DOFade(1f, fadeDuration);
         yield return new WaitForSeconds(fadeDuration);
+
         cameraModel.SetActive(!isZoomed);
         volume.SetActive(isZoomed);
 
@@ -71,5 +68,10 @@ public class CameraController : MonoBehaviour
         yield return new WaitForSeconds(fadeDuration);
 
         isFading = false;
+    }
+
+    public void TakeShot()
+    {
+        // Implementar lógica de captura con raycast
     }
 }

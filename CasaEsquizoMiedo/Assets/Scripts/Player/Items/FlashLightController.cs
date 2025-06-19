@@ -1,115 +1,136 @@
-﻿using UnityEngine;
+﻿// File: FlashlightController.cs
+using UnityEngine;
 
-public class FlashlightController : MonoBehaviour
+public class FlashlightController : FollowCamera
 {
     public Light flashlight;
     public KeyCode toggleKey = KeyCode.Mouse0;
-    public KeyCode fixKey = KeyCode.E;
+    public KeyCode rechargeKey = KeyCode.Mouse1;
 
     public float onDuration = 10f;
     public float blinkDuration = 2f;
+    public float rechargeHoldTime = 3f;
 
-    public Transform cameraTransform;
     public Transform flashlightLightObject;
-    public Vector3 positionOffset = new Vector3(0f, -0.2f, 0.5f);
-    public Vector3 initialRotationOffset = new Vector3(0f, -0.2f, 0.5f);
     public Vector3 flashRotationOffset = new Vector3(0f, -0.2f, 0.5f);
-
-    [SerializeField] private float positionSmoothTime = 0.05f;
-    [SerializeField] private float rotationSmoothSpeed = 10f;
+    public Animator flashlightAnimator;
 
     private bool isOn = false;
     private float onTimer = 0f;
     private bool isBlinking = false;
-    private bool isDisabled = false;
+    private bool needsRecharge = false;
+    private bool wasOnBeforeDisable = false;
 
-    private int requiredPresses = 10;
-    private int pressCounter = 0;
-    private float pressResetTime = 3f;
-    private float lastPressTime = -10f;
+    private float rechargeTimer = 0f;
+    private bool isRecharging = false;
+    private bool shouldLowerAfterRecharge = false;
 
-    private Vector3 velocity = Vector3.zero;
+    public bool IsBlinking => isBlinking;
+
+    void OnEnable()
+    {
+        ToggleFlashlight(!isBlinking && wasOnBeforeDisable);
+    }
+
+    void OnDisable()
+    {
+        wasOnBeforeDisable = isOn && !isBlinking;
+        ToggleFlashlight(false);
+        StopRecharge();
+    }
 
     void Update()
     {
-        if (Input.GetKeyDown(toggleKey))
-        {
-            HandleKeyPress();
-        }
+        HandleInput();
 
-        FollowCameraWithOffset();
-        ApplyCameraRotationToLight();
-
-        if (isOn && !isBlinking && !isDisabled)
+        if (isOn && !isBlinking)
         {
             onTimer += Time.deltaTime;
             if (onTimer >= onDuration)
-            {
                 StartCoroutine(BlinkAndShutdown());
+        }
+
+        ApplyCameraRotationToLight();
+    }
+
+    void LateUpdate()
+    {
+        LateFollowUpdate();
+    }
+
+    void HandleInput()
+    {
+        if (Input.GetKeyDown(toggleKey) && !isBlinking && !needsRecharge)
+        {
+            ToggleFlashlight(!isOn);
+        }
+
+        if (needsRecharge)
+        {
+            if (Input.GetKeyDown(rechargeKey)) BeginRecharge();
+
+            if (Input.GetKey(rechargeKey))
+            {
+                rechargeTimer += Time.deltaTime;
+                if (rechargeTimer >= rechargeHoldTime)
+                {
+                    RechargeFlashlight();
+                }
+            }
+            else if (Input.GetKeyUp(rechargeKey))
+            {
+                shouldLowerAfterRecharge = true;
+                StopRecharge();
             }
         }
     }
 
-    void HandleKeyPress()
+    void BeginRecharge()
     {
-        if (isDisabled)
-        {
-            float timeSinceLast = Time.time - lastPressTime;
-            if (timeSinceLast > pressResetTime)
-                pressCounter = 0;
+        if (isRecharging) return;
 
-            pressCounter++;
-            lastPressTime = Time.time;
+        rechargeTimer = 0f;
+        isRecharging = true;
+        shouldLowerAfterRecharge = false;
 
-            if (pressCounter >= requiredPresses)
-            {
-                pressCounter = 0;
-                isDisabled = false;
-                ToggleFlashlight(true);
-            }
-        }
-        else
+        flashlightAnimator.ResetTrigger("flashLightDown");
+        flashlightAnimator.SetTrigger("flashLightUp");
+    }
+
+    void StopRecharge()
+    {
+        if (!isRecharging) return;
+
+        rechargeTimer = 0f;
+        isRecharging = false;
+
+        if (shouldLowerAfterRecharge || !isOn)
         {
-            ToggleFlashlight(!isOn);
+            flashlightAnimator.ResetTrigger("flashLightUp");
+            flashlightAnimator.SetTrigger("flashLightDown");
         }
+    }
+
+    void RechargeFlashlight()
+    {
+        needsRecharge = false;
+        isRecharging = false;
+        ToggleFlashlight(true);
+
+        flashlightAnimator.ResetTrigger("flashLightUp");
+        flashlightAnimator.SetTrigger("flashLightDown");
     }
 
     void ToggleFlashlight(bool turnOn)
     {
         isOn = turnOn;
         flashlight.enabled = isOn;
-
-        if (isOn)
-        {
-            onTimer = 0f;
-        }
-    }
-
-    void FollowCameraWithOffset()
-    {
-        if (cameraTransform != null)
-        {
-            Vector3 targetPosition = cameraTransform.position + cameraTransform.TransformDirection(positionOffset);
-            transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref velocity, positionSmoothTime);
-
-            Quaternion targetRotation = cameraTransform.rotation * Quaternion.Euler(initialRotationOffset.x, initialRotationOffset.y, initialRotationOffset.z);
-            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSmoothSpeed * Time.deltaTime);
-        }
-    }
-
-    void ApplyCameraRotationToLight()
-    {
-        if (flashlightLightObject != null && cameraTransform != null)
-        {
-            Quaternion targetRotation = cameraTransform.rotation * Quaternion.Euler(flashRotationOffset.x, flashRotationOffset.y, flashRotationOffset.z);
-            flashlightLightObject.rotation = Quaternion.Slerp(flashlightLightObject.rotation, targetRotation, rotationSmoothSpeed * Time.deltaTime);
-        }
+        if (isOn) onTimer = 0f;
     }
 
     System.Collections.IEnumerator BlinkAndShutdown()
     {
         isBlinking = true;
-
         float blinkTime = 0f;
         float blinkRate = 0.2f;
 
@@ -123,6 +144,24 @@ public class FlashlightController : MonoBehaviour
         flashlight.enabled = false;
         isOn = false;
         isBlinking = false;
-        isDisabled = true;
+        needsRecharge = true;
+    }
+
+    public void ShutDown()
+    {
+        flashlight.enabled = false;
+        isOn = false;
+        needsRecharge = true;
+        isBlinking = false;
+        wasOnBeforeDisable = false;
+        StopRecharge();
+    }
+
+    void ApplyCameraRotationToLight()
+    {
+        if (!flashlightLightObject || !cameraTransform) return;
+
+        Quaternion targetRotation = cameraTransform.rotation * Quaternion.Euler(flashRotationOffset);
+        flashlightLightObject.rotation = Quaternion.Slerp(flashlightLightObject.rotation, targetRotation, Time.deltaTime * 10f);
     }
 }
