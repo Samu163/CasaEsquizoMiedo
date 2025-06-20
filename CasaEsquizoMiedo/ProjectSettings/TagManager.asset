@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Waypoint
   - Door
+  - Ventilador
   layers:
   - Default
   - TransparentFX
