@@ -1,16 +1,19 @@
 using UnityEngine;
 
-public class TextAnomaly : MonoBehaviour
+public class TextAnomaly : Anomaly
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        
-    }
+    public GameObject decalGO;
+    public GameObject decalGOCompleted;
 
-    // Update is called once per frame
-    void Update()
+
+    public override void CaptureAnomaly()
     {
-        
+        if (hasBeenCaptured) return;
+
+        hasBeenCaptured = true;
+
+        decalGO?.SetActive(false);
+        decalGOCompleted?.SetActive(true);
+        GetComponent<Collider>().enabled = false;
     }
 }

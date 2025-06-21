@@ -41,9 +41,10 @@ public class CameraController : FollowCamera
 
         if (Input.GetKeyDown(KeyCode.Mouse0) && isZoomed && !isShakePlaying)
         {
-            TakeShot();
             isZoomed = false;
-            StartCoroutine(FadeZoomTransition(Color.white));
+            fadeDuration = 0.1f;
+            StartCoroutine(FadeZoomTransition(Color.white, true));
+            fadeDuration = 0.2f;
             StartCoroutine(ZoomCooldown());
         }
     }
@@ -69,16 +70,18 @@ public class CameraController : FollowCamera
         }
     }
 
-    IEnumerator FadeZoomTransition(Color fadeColor)
+    IEnumerator FadeZoomTransition(Color fadeColor, bool cameraBackShot = false)
     {
         fadeColor.a = 0f;
         fadePanel.color = fadeColor;
         fadePanel.DOFade(1f, fadeDuration);
         yield return new WaitForSeconds(fadeDuration);
 
+        if (cameraBackShot) TakeShot();
         cameraModel.SetActive(!isZoomed);
         volume.SetActive(isZoomed);
 
+        if (cameraBackShot) fadeDuration = 1f;
         fadePanel.DOFade(0f, fadeDuration);
         yield return new WaitForSeconds(fadeDuration);
     }
@@ -92,14 +95,29 @@ public class CameraController : FollowCamera
 
     public void TakeShot()
     {
-        Ray ray = new Ray(cameraTransform.position, cameraTransform.forward);
+        Vector3 rayOrigin = cameraTransform.position + cameraTransform.forward * 2f;
+        Ray ray = new Ray(rayOrigin, cameraTransform.forward);
         if (Physics.Raycast(ray, out RaycastHit hit, captureRange, anomalyMask))
         {
-            Anomaly anomaly = hit.collider.GetComponentInParent<Anomaly>();
-            if (anomaly && !anomaly.hasBeenCaptured)
+            if (hit.collider.TryGetComponent<Anomaly>(out Anomaly anomaly))
             {
-                anomaly.CaptureAnomaly();
+                if (!anomaly.hasBeenCaptured)
+                {
+                    anomaly.CaptureAnomaly();
+                }
             }
+        }
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        //takeshot ray
+        if (cameraTransform != null)
+        {
+            Vector3 rayOrigin = cameraTransform.position + cameraTransform.forward * 1.2f;
+            Gizmos.color = Color.red;
+            Gizmos.DrawLine(rayOrigin, rayOrigin + cameraTransform.forward * captureRange);
+            Gizmos.DrawWireSphere(rayOrigin + cameraTransform.forward * captureRange, 0.5f);
         }
     }
 }
