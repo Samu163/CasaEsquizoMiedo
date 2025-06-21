@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class VentiladorAnomaly : MonoBehaviour
+public class VentiladorAnomaly : Anomaly
 {
 
     public GameObject ventilador;
@@ -15,6 +15,18 @@ public class VentiladorAnomaly : MonoBehaviour
     void Update()
     {
         
+    }
+
+    public override void InitAnomaly()
+    {
+        Destroy(LevelManager.instance.AnomaliesAndModel[modelIdentifier]);
+        Debug.Log("VentiladorAnomaly anomaly initialized.");
+    }
+
+    public override void CaptureAnomaly()
+    {
+        hasBeenCaptured = true;
+        Debug.Log("VentiladorAnomaly anomaly captured.");
     }
 
     public void OnTriggerEnter(Collider other)
