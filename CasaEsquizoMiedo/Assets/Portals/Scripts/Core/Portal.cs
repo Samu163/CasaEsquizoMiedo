@@ -188,6 +188,7 @@ public class Portal : MonoBehaviour {
                 viewTexture.Release ();
             }
             viewTexture = new RenderTexture (Screen.width, Screen.height, 0);
+            viewTexture.depthStencilFormat = UnityEngine.Experimental.Rendering.GraphicsFormat.D32_SFloat_S8_UInt;
             // Render the view from the portal camera to the view texture
             portalCam.targetTexture = viewTexture;
             // Display the view texture on the screen of the linked portal
