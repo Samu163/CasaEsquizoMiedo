@@ -6,19 +6,30 @@ using UnityEngine;
 public class AnomaliesManager : MonoBehaviour
 {
 
-    public List<Anomaly> allAnomalies = new();
+    public List<GameObject> allAnomalies = new();
 
-    [SerializeField] private List<Anomaly> activeAnomalies = new();
+    [SerializeField] private List<GameObject> activeAnomalies = new();
+
+    void Awake()
+    {
+        foreach (var anomaly in allAnomalies)
+        {
+            anomaly.SetActive(false);
+            if (anomaly.TryGetComponent<Anomaly>(out var anomalyComponent))
+            {
+                anomalyComponent.hasBeenCaptured = false;
+            }
+        }
+    }
 
     public void SpawnAnomalies(int numAnomalies)
     {
         if (numAnomalies > allAnomalies.Count)
         {
-            Debug.LogError("Not enough anomalies to spawn the requested number.");
             return;
         }
 
-        List<Anomaly> shuffled = new(allAnomalies);
+        List<GameObject> shuffled = new(allAnomalies);
         Shuffle(shuffled);
 
         activeAnomalies.Clear();
@@ -27,12 +38,9 @@ public class AnomaliesManager : MonoBehaviour
 
         foreach (var anomaly in selectedAnomalies)
         {
-            var prefabInstance = Instantiate(anomaly as MonoBehaviour, transform).gameObject;
-            Anomaly anomalyInstance = prefabInstance.GetComponent<Anomaly>();
-            activeAnomalies.Add(anomalyInstance);
+            anomaly.SetActive(true);
+            activeAnomalies.Add(anomaly);
         }
-
-        Debug.Log($"Spawned {activeAnomalies.Count} anomalies.");
 
         InitAnomalies();
     }
@@ -41,7 +49,7 @@ public class AnomaliesManager : MonoBehaviour
     {
         foreach (var anomaly in activeAnomalies)
         {
-            anomaly.InitAnomaly();
+            anomaly.GetComponent<Anomaly>().InitAnomaly();
         }
     }
 
